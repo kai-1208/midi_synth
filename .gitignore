@@ -1,0 +1,28 @@
+# ビルド成果物・一時フォルダ（必須）
+build/
+bin/
+out/
+
+# FetchContent でダウンロードされた外部ライブラリ（buildフォルダ外に生成された場合用）
+_deps/
+
+# 大容量の音源ファイル（Gitが重くなるのを防ぐため）
+# ※SoundFontの入手先は README.md にURL等を書いておくのが一般的です
+*.sf2
+*.sf3
+*.sfz
+*.wav
+
+# VS Code の個人設定（パス情報などが含まれるため）
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+
+# Visual Studio / CMake の一時ファイル
+CMakeUserPresets.json
+*.user
+
+# OS固有の不要ファイル
+.DS_Store
+Thumbs.db

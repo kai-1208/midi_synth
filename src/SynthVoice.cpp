@@ -1,74 +1,51 @@
 // src/SynthVoice.cpp
 #include "SynthVoice.hpp"
+#define TSF_IMPLEMENTATION
+#include "tsf.h"
+#include "SynthVoice.hpp"
+#include <iostream>
 
-SynthEngine::SynthEngine() {
-    for (auto& v : voices) {
-        v.active = false;
+SynthEngine::SynthEngine() {}
+
+SynthEngine::~SynthEngine() {
+    if (soundFont) {
+        tsf_close(soundFont);
     }
 }
 
-float SynthEngine::midiNoteToFreq(int note) {
-    // A4 (note 69) = 440 Hz
-    return 440.0f * std::pow(2.0f, (note - 69) / 12.0f);
+bool SynthEngine::loadSoundFont(const std::string& filename) {
+    if (soundFont) {
+        tsf_close(soundFont);
+    }
+    soundFont = tsf_load_filename(filename.c_str());
+    if (!soundFont) {
+        std::cerr << "[Error] Failed to load SoundFont: " << filename << std::endl;
+        return false;
+    }
+    // 出力設定 (インターリーブステレオ, 44.1kHz)
+    tsf_set_output(soundFont, TSF_STEREO_INTERLEAVED, static_cast<int>(SAMPLE_RATE), 0.0f);
+    std::cout << "[Synth] SoundFont loaded successfully: " << filename << std::endl;
+    return true;
 }
 
 void SynthEngine::noteOn(int note, int velocity) {
-    if (velocity == 0) {
-        noteOff(note);
-        return;
-    }
-
-    // 空いているボイス、または最も音量が小さいボイスを割り当て
-    int targetIdx = 0;
-    float minAmp = 100.0f;
-    for (size_t i = 0; i < MAX_VOICES; ++i) {
-        if (!voices[i].active) {
-            targetIdx = i;
-            break;
-        }
-        if (voices[i].amplitude < minAmp) {
-            minAmp = voices[i].amplitude;
-            targetIdx = i;
-        }
-    }
-
-    auto& v = voices[targetIdx];
-    v.active = true;
-    v.noteNumber = note;
-    v.velocity = velocity / 127.0f;
-    v.amplitude = v.velocity;
-    v.phase = 0.0f;
-    float freq = midiNoteToFreq(note);
-    v.phaseIncrement = (2.0f * 3.14159265358979323846f * freq) / SAMPLE_RATE;
+    if (!soundFont) return;
+    float vel = velocity / 127.0f;
+    tsf_note_on(soundFont, 0, note, vel);
 }
 
 void SynthEngine::noteOff(int note) {
-    for (auto& v : voices) {
-        if (v.active && v.noteNumber == note) {
-            v.decayRate = 0.999f; // キーを離したら素早く減衰
-        }
-    }
+    if (!soundFont) return;
+    tsf_note_off(soundFont, 0, note);
 }
 
-float SynthEngine::renderSample() {
-    float mixed = 0.0f;
-    for (auto& v : voices) {
-        if (!v.active) continue;
-
-        // 簡易倍音（基音 + 第2倍音）によるピアノ風の厚み付け
-        float sample = std::sin(v.phase) * 0.7f + std::sin(v.phase * 2.0f) * 0.3f;
-        mixed += sample * v.amplitude;
-
-        // 位相とエンベロープ更新
-        v.phase += v.phaseIncrement;
-        if (v.phase >= 2.0f * 3.14159265358979323846f) {
-            v.phase -= 2.0f * 3.14159265358979323846f;
+void SynthEngine::renderBuffer(float* buffer, int numSamples) {
+    if (!soundFont) {
+        for (int i = 0; i < numSamples * 2; ++i) {
+            buffer[i] = 0.0f;
         }
-
-        v.amplitude *= v.decayRate;
-        if (v.amplitude < 0.0001f) {
-            v.active = false;
-        }
+        return;
     }
-    return mixed * 0.2f; // 全体マスター音量
+    // 指定サンプル数分を一括でステレオ描画 (gain: 1.0f)
+    tsf_render_float(soundFont, buffer, numSamples, 0);
 }

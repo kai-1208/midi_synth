@@ -1,30 +1,21 @@
 // include/SynthVoice.hpp
 #pragma once
-#include <array>
-#include <cmath>
-#include <cstdint>
+#include <string>
 
-struct Voice {
-    bool active = false;
-    int noteNumber = 0;
-    float velocity = 0.0f;
-    float phase = 0.0f;
-    float phaseIncrement = 0.0f;
-    float amplitude = 0.0f;
-    float decayRate = 0.99992f; // 減衰速度 (ピアノ風)
-};
+struct tsf;
 
 class SynthEngine {
 public:
-    static constexpr size_t MAX_VOICES = 16;
     static constexpr float SAMPLE_RATE = 44100.0f;
 
     SynthEngine();
+    ~SynthEngine();
+
+    bool loadSoundFont(const std::string& filename);
     void noteOn(int note, int velocity);
     void noteOff(int note);
-    float renderSample();
+    void renderBuffer(float* buffer, int numSamples);
 
 private:
-    std::array<Voice, MAX_VOICES> voices;
-    float midiNoteToFreq(int note);
+    tsf* soundFont = nullptr;
 };

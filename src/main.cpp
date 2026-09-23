@@ -1,7 +1,6 @@
-// src/main.cpp
 #include <iostream>
-#include <thread>
-#include <chrono>
+#include <string>
+#include <sstream>
 #include "SynthVoice.hpp"
 #include "MidiHandler.hpp"
 #include "AudioEngine.hpp"
@@ -18,7 +17,7 @@ int main() {
         return 1;
     }
 
-    // 2. MIDIハンドラのセットアップ
+    // 2. MIDI 入力デバイスの選択
     MidiHandler midi([&synth](bool isNoteOn, int note, int vel) {
         if (isNoteOn) {
             synth.noteOn(note, vel);
@@ -28,26 +27,38 @@ int main() {
     });
 
     midi.listPorts();
+    std::cout << "\nEnter MIDI Port number for P-45 (e.g., 0): ";
+    unsigned int midiPort = 0;
+    std::cin >> midiPort;
 
-    std::cout << "\nEnter MIDI Port number (e.g., 0): ";
-    unsigned int port = 0;
-    std::cin >> port;
-
-    if (!midi.openPort(port)) {
+    if (!midi.openPort(midiPort)) {
         std::cerr << "Failed to open MIDI port." << std::endl;
         return 1;
     }
-    std::cout << "MIDI Port opened successfully." << std::endl;
+    std::cout << "MIDI Port opened successfully.\n";
 
-    // 3. オーディオエンジンの起動
+    // 3. オーディオ出力デバイスの選択
     AudioEngine audio(synth);
-    if (!audio.start()) {
+    audio.listOutputDevices();
+
+    std::cout << "\nEnter Audio Device number (or press Enter for default): ";
+    std::string line;
+    std::cin.ignore(); // 直前の改行をクリア
+    std::getline(std::cin, line);
+
+    int audioIndex = -1;
+    if (!line.empty()) {
+        std::stringstream ss(line);
+        ss >> audioIndex;
+    }
+
+    // 4. オーディオエンジンの起動
+    if (!audio.start(audioIndex)) {
         std::cerr << "Failed to start Audio Engine." << std::endl;
         return 1;
     }
 
     std::cout << "\n[Ready] Play your P-45! (Press Enter to exit)\n";
-    std::cin.ignore();
     std::cin.get();
 
     audio.stop();

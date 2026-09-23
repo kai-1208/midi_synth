@@ -1,4 +1,3 @@
-// src/AudioEngine.cpp
 #include "AudioEngine.hpp"
 #include <iostream>
 
@@ -10,37 +9,72 @@ AudioEngine::~AudioEngine() {
     stop();
 }
 
+void AudioEngine::listOutputDevices() {
+    validOutputDeviceIds.clear();
+    std::vector<unsigned int> deviceIds = dac->getDeviceIds();
+
+    std::cout << "\n[Audio Output Devices]" << std::endl;
+    unsigned int defaultOut = dac->getDefaultOutputDevice();
+
+    int index = 0;
+    for (unsigned int id : deviceIds) {
+        RtAudio::DeviceInfo info = dac->getDeviceInfo(id);
+        // 出力チャンネルを持っているデバイスのみを表示
+        if (info.outputChannels > 0) {
+            validOutputDeviceIds.push_back(id);
+            std::cout << "  [" << index << "] " << info.name;
+            if (id == defaultOut) {
+                std::cout << " (Default)";
+            }
+            std::cout << std::endl;
+            index++;
+        }
+    }
+}
+
 int AudioEngine::audioCallback(void* outputBuffer, void* /*inputBuffer*/, unsigned int nBufferFrames,
                                double /*streamTime*/, RtAudioStreamStatus /*status*/, void* userData) {
     float* buffer = static_cast<float*>(outputBuffer);
     auto* self = static_cast<AudioEngine*>(userData);
 
-    // バッファサイズ分（128サンプル）を一括展開
     self->synthRef.renderBuffer(buffer, static_cast<int>(nBufferFrames));
     return 0;
 }
 
-bool AudioEngine::start() {
-    if (dac->getDeviceCount() < 1) {
-        std::cerr << "[Audio] No audio devices found!\n";
+bool AudioEngine::start(int deviceIndex) {
+    if (validOutputDeviceIds.empty()) {
+        // まだリスト化されていない場合は内部で取得
+        listOutputDevices();
+    }
+
+    if (validOutputDeviceIds.empty()) {
+        std::cerr << "[Audio Error] No audio output devices found!\n";
         return false;
     }
 
+    unsigned int targetDeviceId = dac->getDefaultOutputDevice();
+    if (deviceIndex >= 0 && static_cast<size_t>(deviceIndex) < validOutputDeviceIds.size()) {
+        targetDeviceId = validOutputDeviceIds[deviceIndex];
+    }
+
+    RtAudio::DeviceInfo info = dac->getDeviceInfo(targetDeviceId);
+    std::cout << "[Audio] Using output device: " << info.name << std::endl;
+
     RtAudio::StreamParameters parameters;
-    parameters.deviceId = dac->getDefaultOutputDevice();
+    parameters.deviceId = targetDeviceId;
     parameters.nChannels = 2; // ステレオ
     parameters.firstChannel = 0;
 
     unsigned int sampleRate = static_cast<unsigned int>(SynthEngine::SAMPLE_RATE);
-    unsigned int bufferFrames = 128; // 超低遅延（約2.9ms）
+    unsigned int bufferFrames = 128; // 低遅延（約2.9ms）
 
     try {
         dac->openStream(&parameters, nullptr, RTAUDIO_FLOAT32,
                         sampleRate, &bufferFrames, &AudioEngine::audioCallback, this);
         dac->startStream();
-        std::cout << "[Audio] Audio stream started with buffer size: " << bufferFrames << " frames.\n";
+        std::cout << "[Audio] Audio stream started (Buffer: " << bufferFrames << " frames).\n";
     } catch (RtAudioErrorType& e) {
-        std::cerr << "[Audio] RtAudio error: " << e << std::endl;
+        std::cerr << "[Audio Error] Failed to open audio stream: " << e << std::endl;
         return false;
     }
     return true;

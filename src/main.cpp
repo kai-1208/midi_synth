@@ -27,7 +27,7 @@ int main() {
     });
 
     midi.listPorts();
-    std::cout << "\nEnter MIDI Port number for P-45 (e.g., 0): ";
+    std::cout << "\nEnter MIDI Port number for your device (e.g., 0): ";
     unsigned int midiPort = 0;
     std::cin >> midiPort;
 
@@ -58,7 +58,7 @@ int main() {
         return 1;
     }
 
-    std::cout << "\n[Ready] Play your P-45! (Press Enter to exit)\n";
+    std::cout << "\n[Ready] Play your piano! (Press Enter to exit)\n";
     std::cin.get();
 
     audio.stop();

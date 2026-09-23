@@ -6,7 +6,7 @@ struct tsf;
 
 class SynthEngine {
 public:
-    static constexpr float SAMPLE_RATE = 44100.0f;
+    static constexpr float SAMPLE_RATE = 48000.0f;
 
     SynthEngine();
     ~SynthEngine();

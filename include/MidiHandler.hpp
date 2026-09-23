@@ -7,8 +7,9 @@
 class MidiHandler {
 public:
     using NoteCallback = std::function<void(bool isNoteOn, int note, int vel)>;
+    using ControlCallback = std::function<void(int controller, int value)>;
 
-    MidiHandler(NoteCallback cb);
+    MidiHandler(NoteCallback noteCb, ControlCallback ctrlCb);
     ~MidiHandler();
     bool openPort(unsigned int portNumber = 0);
     void listPorts();
@@ -16,5 +17,6 @@ public:
 private:
     static void midiCallback(double timeStamp, std::vector<unsigned char>* message, void* userData);
     std::unique_ptr<RtMidiIn> midiIn;
-    NoteCallback callback;
+    NoteCallback noteCallback;
+    ControlCallback controlCallback;
 };

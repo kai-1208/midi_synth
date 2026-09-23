@@ -17,14 +17,19 @@ int main() {
         return 1;
     }
 
-    // 2. MIDI 入力デバイスの選択
-    MidiHandler midi([&synth](bool isNoteOn, int note, int vel) {
-        if (isNoteOn) {
-            synth.noteOn(note, vel);
-        } else {
-            synth.noteOff(note);
+    // 2. MIDI 入力デバイスの選択（鍵盤打鍵 + ペダル入力を登録）
+    MidiHandler midi(
+        [&synth](bool isNoteOn, int note, int vel) {
+            if (isNoteOn) {
+                synth.noteOn(note, vel);
+            } else {
+                synth.noteOff(note);
+            }
+        },
+        [&synth](int controller, int value) {
+            synth.controlChange(controller, value);
         }
-    });
+    );
 
     midi.listPorts();
     std::cout << "\nEnter MIDI Port number for your device (e.g., 0): ";

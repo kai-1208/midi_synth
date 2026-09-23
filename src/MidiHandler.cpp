@@ -2,7 +2,8 @@
 #include "MidiHandler.hpp"
 #include <iostream>
 
-MidiHandler::MidiHandler(NoteCallback cb) : callback(cb) {
+MidiHandler::MidiHandler(NoteCallback noteCb, ControlCallback ctrlCb)
+    : noteCallback(noteCb), controlCallback(ctrlCb) {
     try {
         midiIn = std::make_unique<RtMidiIn>();
         midiIn->setCallback(&MidiHandler::midiCallback, this);
@@ -37,12 +38,17 @@ void MidiHandler::midiCallback(double /*timeStamp*/, std::vector<unsigned char>*
     if (!message || message->size() < 3) return;
 
     unsigned char status = message->at(0) & 0xF0;
-    int note = message->at(1);
-    int vel  = message->at(2);
+    int data1 = message->at(1);
+    int data2 = message->at(2);
 
-    if (status == 0x90 && vel > 0) {
-        self->callback(true, note, vel);  // Note On
-    } else if (status == 0x80 || (status == 0x90 && vel == 0)) {
-        self->callback(false, note, 0);   // Note Off
+    // 1. ノートオン / ノートオフ
+    if (status == 0x90 && data2 > 0) {
+        if (self->noteCallback) self->noteCallback(true, data1, data2);
+    } else if (status == 0x80 || (status == 0x90 && data2 == 0)) {
+        if (self->noteCallback) self->noteCallback(false, data1, 0);
+    }
+    // 2. コントロールチェンジ（サステインペダル等: 0xB0）
+    else if (status == 0xB0) {
+        if (self->controlCallback) self->controlCallback(data1, data2);
     }
 }

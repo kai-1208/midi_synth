@@ -13,6 +13,16 @@ public:
     bool start(int deviceIndex = -1); // -1 の場合は既定のデバイスを使用
     void stop();
 
+    int getDeviceCount() const {
+        return validOutputDeviceIds.size();
+    }
+    std::string getDeviceName(int index) const {
+        if (index >= 0 && index < (int)validOutputDeviceIds.size()) {
+            return dac->getDeviceInfo(validOutputDeviceIds[index]).name;
+        }
+        return "";
+    }
+
 private:
     static int audioCallback(void* outputBuffer, void* inputBuffer, unsigned int nBufferFrames,
                              double streamTime, RtAudioStreamStatus status, void* userData);

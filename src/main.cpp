@@ -1,71 +1,94 @@
 #include <iostream>
 #include <string>
-#include <sstream>
-#include "SynthVoice.hpp"
-#include "MidiHandler.hpp"
-#include "AudioEngine.hpp"
+#include <vector>
+#include "MidiSynthApi.h"
 
 int main() {
-    std::cout << "=== Low-Latency SoundFont Piano Synth ===" << std::endl;
+    std::cout << "=== DLL API Functional Test CLI ===" << std::endl;
 
-    SynthEngine synth;
+    // 1. エンジンの初期化
+    if (!Synth_Init()) {
+        std::cerr << "Failed to init Synth Engine.\n";
+        return 1;
+    }
 
-    // 1. SoundFont の読み込み
+    // 2. SoundFontの読み込み
     std::string sfPath = "piano.sf2";
-    if (!synth.loadSoundFont(sfPath)) {
-        std::cerr << "Please ensure '" << sfPath << "' exists in the working directory.\n";
+    if (!Synth_LoadSoundFont(sfPath.c_str())) {
+        std::cerr << "Failed to load '" << sfPath << "'.\n";
+        Synth_Shutdown();
         return 1;
     }
 
-    // 2. MIDI 入力デバイスの選択（鍵盤打鍵 + ペダル入力を登録）
-    MidiHandler midi(
-        [&synth](bool isNoteOn, int note, int vel) {
-            if (isNoteOn) {
-                synth.noteOn(note, vel);
-            } else {
-                synth.noteOff(note);
-            }
-        },
-        [&synth](int controller, int value) {
-            synth.controlChange(controller, value);
-        }
-    );
+    // 3. MIDI ポートの選択
+    int midiCount = Synth_GetMidiPortCount();
+    std::cout << "\n[MIDI Ports]" << std::endl;
+    char nameBuf[256];
+    for (int i = 0; i < midiCount; ++i) {
+        Synth_GetMidiPortName(i, nameBuf, sizeof(nameBuf));
+        std::cout << "  [" << i << "] " << nameBuf << std::endl;
+    }
 
-    midi.listPorts();
-    std::cout << "\nEnter MIDI Port number for your device (e.g., 0): ";
-    unsigned int midiPort = 0;
+    std::cout << "Enter MIDI Port number (e.g., 0): ";
+    int midiPort = 0;
     std::cin >> midiPort;
-
-    if (!midi.openPort(midiPort)) {
-        std::cerr << "Failed to open MIDI port." << std::endl;
-        return 1;
-    }
-    std::cout << "MIDI Port opened successfully.\n";
-
-    // 3. オーディオ出力デバイスの選択
-    AudioEngine audio(synth);
-    audio.listOutputDevices();
-
-    std::cout << "\nEnter Audio Device number (or press Enter for default): ";
-    std::string line;
-    std::cin.ignore(); // 直前の改行をクリア
-    std::getline(std::cin, line);
-
-    int audioIndex = -1;
-    if (!line.empty()) {
-        std::stringstream ss(line);
-        ss >> audioIndex;
-    }
-
-    // 4. オーディオエンジンの起動
-    if (!audio.start(audioIndex)) {
-        std::cerr << "Failed to start Audio Engine." << std::endl;
+    if (!Synth_OpenMidiPort(midiPort)) {
+        std::cerr << "Failed to open MIDI port.\n";
+        Synth_Shutdown();
         return 1;
     }
 
-    std::cout << "\n[Ready] Play your piano! (Press Enter to exit)\n";
-    std::cin.get();
+    // 4. オーディオ出力デバイスの選択
+    int audioCount = Synth_GetAudioDeviceCount();
+    std::cout << "\n[Audio Devices]" << std::endl;
+    for (int i = 0; i < audioCount; ++i) {
+        Synth_GetAudioDeviceName(i, nameBuf, sizeof(nameBuf));
+        std::cout << "  [" << i << "] " << nameBuf << std::endl;
+    }
 
-    audio.stop();
+    std::cout << "Enter Audio Device number (e.g., 0 for VoiceMeeter/Headphone): ";
+    int audioDevice = 0;
+    std::cin >> audioDevice;
+    if (!Synth_StartAudio(audioDevice)) {
+        std::cerr << "Failed to start Audio.\n";
+        Synth_Shutdown();
+        return 1;
+    }
+
+    std::cout << "\n============================================\n";
+    std::cout << "  Ready! You can play your keyboard now.\n";
+    std::cout << "  [Commands to test Core Features]:\n";
+    std::cout << "    v <0.0 - 1.0> : Change Volume (e.g., 'v 0.3')\n";
+    std::cout << "    p             : Toggle Pedal ON/OFF\n";
+    std::cout << "    panic         : Force stop all notes (Panic)\n";
+    std::cout << "    q             : Quit\n";
+    std::cout << "============================================\n\n";
+
+    std::string cmd;
+    bool pedalState = true;
+    while (std::cin) {
+        std::cout << "> ";
+        if (!(std::cin >> cmd)) {
+            break;
+        }
+        if (cmd == "q") {
+            break;
+        } else if (cmd == "v") {
+            float vol = 1.0f;
+            std::cin >> vol;
+            Synth_SetMasterVolume(vol);
+            std::cout << "[Test] Volume set to: " << vol << std::endl;
+        } else if (cmd == "p") {
+            pedalState = !pedalState;
+            Synth_SetPedalEnabled(pedalState);
+            std::cout << "[Test] Pedal is now: " << (pedalState ? "ENABLED" : "DISABLED") << std::endl;
+        } else if (cmd == "panic") {
+            Synth_AllNotesOff();
+            std::cout << "[Test] All notes stopped.\n";
+        }
+    }
+
+    Synth_Shutdown();
+    std::cout << "Engine shutdown cleanly.\n";
     return 0;
 }

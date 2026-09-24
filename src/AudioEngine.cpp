@@ -3,6 +3,7 @@
 
 AudioEngine::AudioEngine(SynthEngine& synth) : synthRef(synth) {
     dac = std::make_unique<RtAudio>(RtAudio::WINDOWS_WASAPI);
+    listOutputDevices(); // 有効なデバイスを自動的にリスト化
 }
 
 AudioEngine::~AudioEngine() {

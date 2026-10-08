@@ -95,11 +95,9 @@ void SynthEngine::renderBuffer(float* buffer, int numSamples) {
 
     tsf_render_float(soundFont, buffer, numSamples, 0);
 
-    float vol = volume.load();
-    if (vol != 1.0f) {
-        int total = numSamples * 2;
-        for (int i = 0; i < total; ++i) {
-            buffer[i] *= vol;
-        }
+    float vol = volume.load() * 0.75f;
+    int total = numSamples * 2;
+    for (int i = 0; i < total; ++i) {
+        buffer[i] *= vol;
     }
 }

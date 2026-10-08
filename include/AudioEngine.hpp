@@ -2,7 +2,14 @@
 #include <RtAudio.h>
 #include <memory>
 #include <vector>
+#include <string>
 #include "SynthVoice.hpp"
+
+struct AvailableDevice {
+    RtAudio::Api api;
+    unsigned int deviceId;
+    std::string displayName;
+};
 
 class AudioEngine {
 public:
@@ -10,15 +17,16 @@ public:
     ~AudioEngine();
 
     void listOutputDevices();
-    bool start(int deviceIndex = -1); // -1 の場合は既定のデバイスを使用
+    bool start(int deviceIndex = -1);
     void stop();
 
-    int getDeviceCount() const {
-        return validOutputDeviceIds.size();
+    // C# 連携・情報取得メソッド
+    int getDeviceCount() const { 
+        return static_cast<int>(availableDevices.size()); 
     }
     std::string getDeviceName(int index) const {
-        if (index >= 0 && index < (int)validOutputDeviceIds.size()) {
-            return dac->getDeviceInfo(validOutputDeviceIds[index]).name;
+        if (index >= 0 && index < static_cast<int>(availableDevices.size())) {
+            return availableDevices[index].displayName;
         }
         return "";
     }
@@ -26,7 +34,8 @@ public:
 private:
     static int audioCallback(void* outputBuffer, void* inputBuffer, unsigned int nBufferFrames,
                              double streamTime, RtAudioStreamStatus status, void* userData);
-    std::unique_ptr<RtAudio> dac;
+
+    std::unique_ptr<RtAudio> activeDac;
     SynthEngine& synthRef;
-    std::vector<unsigned int> validOutputDeviceIds; // 有効な出力デバイスIDのリスト
+    std::vector<AvailableDevice> availableDevices;
 };

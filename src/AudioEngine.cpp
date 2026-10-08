@@ -2,8 +2,7 @@
 #include <iostream>
 
 AudioEngine::AudioEngine(SynthEngine& synth) : synthRef(synth) {
-    dac = std::make_unique<RtAudio>(RtAudio::WINDOWS_WASAPI);
-    listOutputDevices(); // 有効なデバイスを自動的にリスト化
+    listOutputDevices();
 }
 
 AudioEngine::~AudioEngine() {
@@ -11,25 +10,46 @@ AudioEngine::~AudioEngine() {
 }
 
 void AudioEngine::listOutputDevices() {
-    validOutputDeviceIds.clear();
-    std::vector<unsigned int> deviceIds = dac->getDeviceIds();
+    availableDevices.clear();
+    std::cout << "\n[Audio Output Devices (ASIO & Windows Standard)]" << std::endl;
 
-    std::cout << "\n[Audio Output Devices]" << std::endl;
-    unsigned int defaultOut = dac->getDefaultOutputDevice();
+    int displayIndex = 0;
 
-    int index = 0;
-    for (unsigned int id : deviceIds) {
-        RtAudio::DeviceInfo info = dac->getDeviceInfo(id);
-        // 出力チャンネルを持っているデバイスのみを表示
-        if (info.outputChannels > 0) {
-            validOutputDeviceIds.push_back(id);
-            std::cout << "  [" << index << "] " << info.name;
-            if (id == defaultOut) {
-                std::cout << " (Default)";
+    // 1. ASIO デバイスのスキャン
+    try {
+        RtAudio asioDac(RtAudio::WINDOWS_ASIO);
+        std::vector<unsigned int> asioIds = asioDac.getDeviceIds();
+        for (unsigned int id : asioIds) {
+            RtAudio::DeviceInfo info = asioDac.getDeviceInfo(id);
+            if (info.outputChannels > 0) {
+                std::string name = "[ASIO] " + info.name;
+                availableDevices.push_back({RtAudio::WINDOWS_ASIO, id, name});
+                std::cout << "  [" << displayIndex++ << "] " << name << std::endl;
             }
-            std::cout << std::endl;
-            index++;
         }
+    } catch (...) {
+        // ASIOが環境にない場合はスキップ
+    }
+
+    // 2. WASAPI（Windows標準）デバイスのスキャン
+    try {
+        RtAudio wasapiDac(RtAudio::WINDOWS_WASAPI);
+        std::vector<unsigned int> wasapiIds = wasapiDac.getDeviceIds();
+        unsigned int defaultOut = wasapiDac.getDefaultOutputDevice();
+
+        for (unsigned int id : wasapiIds) {
+            RtAudio::DeviceInfo info = wasapiDac.getDeviceInfo(id);
+            if (info.outputChannels > 0) {
+                std::string name = "[WASAPI] " + info.name;
+                if (id == defaultOut) {
+                    name += " (Default)";
+                }
+                availableDevices.push_back({RtAudio::WINDOWS_WASAPI, id, name});
+                std::cout << "  [" << displayIndex++ << "] " << name << std::endl;
+            }
+        }
+    } catch (...) {
+        // WASAPIエラー時はスキップ
     }
 }
 
@@ -43,47 +63,58 @@ int AudioEngine::audioCallback(void* outputBuffer, void* /*inputBuffer*/, unsign
 }
 
 bool AudioEngine::start(int deviceIndex) {
-    if (validOutputDeviceIds.empty()) {
-        // まだリスト化されていない場合は内部で取得
+    if (availableDevices.empty()) {
         listOutputDevices();
     }
 
-    if (validOutputDeviceIds.empty()) {
-        std::cerr << "[Audio Error] No audio output devices found!\n";
+    if (availableDevices.empty()) {
+        std::cerr << "[Audio Error] No audio devices found!\n";
         return false;
     }
 
-    unsigned int targetDeviceId = dac->getDefaultOutputDevice();
-    if (deviceIndex >= 0 && static_cast<size_t>(deviceIndex) < validOutputDeviceIds.size()) {
-        targetDeviceId = validOutputDeviceIds[deviceIndex];
+    // デバイスの決定（指定がなければ先頭または既定）
+    int selectedIdx = 0;
+    if (deviceIndex >= 0 && static_cast<size_t>(deviceIndex) < availableDevices.size()) {
+        selectedIdx = deviceIndex;
     }
 
-    RtAudio::DeviceInfo info = dac->getDeviceInfo(targetDeviceId);
-    std::cout << "[Audio] Using output device: " << info.name << std::endl;
+    const auto& chosen = availableDevices[selectedIdx];
+    std::cout << "[Audio] Opening: " << chosen.displayName << std::endl;
+
+    // 選択されたAPIでRtAudioを生成
+    try {
+        activeDac = std::make_unique<RtAudio>(chosen.api);
+    } catch (RtAudioErrorType& e) {
+        std::cerr << "[Audio Error] Failed to create driver: " << e << std::endl;
+        return false;
+    }
 
     RtAudio::StreamParameters parameters;
-    parameters.deviceId = targetDeviceId;
+    parameters.deviceId = chosen.deviceId;
     parameters.nChannels = 2; // ステレオ
     parameters.firstChannel = 0;
 
     unsigned int sampleRate = static_cast<unsigned int>(SynthEngine::SAMPLE_RATE);
-    unsigned int bufferFrames = 128; // 低遅延（約2.9ms）
+    // ASIO/WASAPI共通で安定かつ低遅延な256サンプル（約5.3ms）
+    unsigned int bufferFrames = 256; 
 
     try {
-        dac->openStream(&parameters, nullptr, RTAUDIO_FLOAT32,
-                        sampleRate, &bufferFrames, &AudioEngine::audioCallback, this);
-        dac->startStream();
-        std::cout << "[Audio] Audio stream started (Buffer: " << bufferFrames << " frames).\n";
+        activeDac->openStream(&parameters, nullptr, RTAUDIO_FLOAT32,
+                             sampleRate, &bufferFrames, &AudioEngine::audioCallback, this);
+        activeDac->startStream();
+        std::cout << "[Audio] Stream started successfully (Buffer: " << bufferFrames << " frames).\n";
     } catch (RtAudioErrorType& e) {
-        std::cerr << "[Audio Error] Failed to open audio stream: " << e << std::endl;
+        std::cerr << "[Audio Error] Stream failed: " << e << std::endl;
         return false;
     }
+
     return true;
 }
 
 void AudioEngine::stop() {
-    if (dac && dac->isStreamOpen()) {
-        dac->stopStream();
-        dac->closeStream();
+    if (activeDac && activeDac->isStreamOpen()) {
+        activeDac->stopStream();
+        activeDac->closeStream();
     }
+    activeDac.reset();
 }
